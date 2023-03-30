@@ -1,4 +1,5 @@
-# auditd-python-parser
+auditd-python-parser
+========
 
 An in development python library to parse raw auditd events generated on a linux system. This is done only using the auditd.log* files and doesn't require the use of ausearch or similar. The logs can also be parsed on a Windows system.
 
@@ -6,11 +7,9 @@ The library tries to keep to the key fields for each event type and generates ad
 
 To use you import the library in the src folder and then call parsedata(data) from it which will return the values. Currently it returns dfprocessevents, dfnetworkevents
 
-.. code:: pycon
-  import auditdparser
-  
+.. code:: python
+  import auditdparser 
   f = open("auditd.log", "r")
   rawdata = f.read()
-  f.close() 
-  
+  f.close()   
   dfprocessevents, dfnetworkevents = auditdparser.parsedata(rawdata)

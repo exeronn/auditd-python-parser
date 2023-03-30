@@ -1,1 +1,0 @@
-# auditd-python-parser

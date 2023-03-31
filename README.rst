@@ -14,3 +14,10 @@ Install the package using PIP "pip install auditd-python-parser" and then import
     rawdata = f.read()
     f.close()   
     dfprocessevents, dfnetworkevents = auditdpythonparser.parsedata(rawdata)
+    
+Process Event Example Output
+--------------
+.. image:: https://github.com/exeronn/auditd-python-parser/raw/main/images/processevents.PNG 
+Network Event Example Output
+--------------
+.. image:: https://github.com/exeronn/auditd-python-parser/raw/main/images/networkevents.PNG    

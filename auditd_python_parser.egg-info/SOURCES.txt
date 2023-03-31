@@ -1,0 +1,12 @@
+LICENSE
+README.rst
+README_pypi.md
+pyproject.toml
+setup.cfg
+auditd_python_parser.egg-info/PKG-INFO
+auditd_python_parser.egg-info/SOURCES.txt
+auditd_python_parser.egg-info/dependency_links.txt
+auditd_python_parser.egg-info/requires.txt
+auditd_python_parser.egg-info/top_level.txt
+auditdpythonparser/__init__.py
+auditdpythonparser/auditdparser.py

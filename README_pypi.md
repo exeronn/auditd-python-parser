@@ -4,3 +4,6 @@ The library tries to keep to the key fields for each event type and generates ad
 
 To use you call parsedata(data) from it which will return the values. Currently it returns dfprocessevents, dfnetworkevents. See the Github project for example code.
 
+import auditdpythonparser
+dfprocessevents, dfnetworkevents = auditdpythonparser.parsedata(data)
+

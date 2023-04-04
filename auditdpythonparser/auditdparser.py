@@ -271,8 +271,9 @@ def parsedata(eventdata):
     * eventdata: a string of 1 or more raw audid.log files
 
     ---Returns---
-    * dfprocessevents: a pandas dataframe of the extracted and parsed process events
-    * dfnetworkevents: a pandas dataframe of the extracted and parsed network events
+    * resultdict: a dictionary containing the Pandas dataframes of the results.
+                    process - Process events
+                    network - Network events
     '''
     #fields from sysmonforlinux data - which ones to look at intially to replicate functionality using auditd
     #process = [] 

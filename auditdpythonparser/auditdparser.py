@@ -355,5 +355,10 @@ def parsedata(eventdata):
     dfnetworkevents = pd.DataFrame.from_dict(networkevents)
     del networkevents
     
+    #assign the result dictionary & add the results    
+    resultdict = dict()
+    resultdict["process"] = dfprocessevents
+    resultdict["network"] = dfnetworkevents
+    
     #return the results
-    return dfprocessevents, dfnetworkevents    
+    return resultdict 

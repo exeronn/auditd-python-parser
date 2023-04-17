@@ -15,9 +15,9 @@ Install the package using PIP "pip install auditd-python-parser" and then import
     f.close()   
     results = parsedata(rawdata)
 
-	dfprocessevents = results["process"]
-	dfnetworkevents = results["network"]
-	dffilecreateevents = results["filecreate"]
+    dfprocessevents = results["process"]
+    dfnetworkevents = results["network"]
+    dffilecreateevents = results["filecreate"]
     
 Process Event Example Output
 --------------

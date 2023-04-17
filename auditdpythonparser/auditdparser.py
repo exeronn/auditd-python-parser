@@ -8,7 +8,7 @@ def _parseprocessevent(processevents, commandline, eventjson):
     '''
     A private function to parse process events from raw auditd events
     ---Inputs---
-    * processevents: an array containing the process events we've already parsed - showing just the fields we want
+    * processevents: an array containing the process events we've already parsed into json
     * commandline: the processed commandline from the arg events in the execve event
     * eventjson: the full event in JSON format to parse & process into the processevents array
 
@@ -75,7 +75,7 @@ def _parsenetworkevents(networkevents, eventjson):
     '''
     A private function to parse network events from raw auditd events
     ---Inputs---
-    * networkevents: an array containing the network events we've already parsed - showing just the fields we want
+    * networkevents: an array containing the network events we've already parsed into json
     * eventjson: the full event in JSON format to parse & process into the networkevents array
 
     ---Returns---
@@ -131,6 +131,84 @@ def _parsenetworkevents(networkevents, eventjson):
         networkevents.append(eventjsondisp)
     #return the array
     return networkevents
+
+def _parsefilecreateevents(filecevents, eventjson):
+    '''
+    A private function to parse file create events from raw auditd events
+    ---Inputs---
+    * filecevents: an array containing the network events we've already parsed into json
+    * eventjson: the full event in JSON format to parse & process into the networkevents array
+
+    ---Returns---
+    * filecevents: an array containing the process events we've already parsed - showing just the fields we want
+    '''
+    #attempt to get the timestamp via the syscall event
+    ts = eventjson["msg"].replace("audit(", "").replace(")", "").split(":")[0]
+    #convert the timestamp to a readable time
+    readabletime = datetime.datetime.utcfromtimestamp(float(ts)).strftime('%Y-%m-%d %H:%M:%S.%f')
+    eventjson["Time"] = readabletime
+    #we don't want to return all fields due to how many their are, we can't display them easily. So make a new dictionary with the fields we want.
+    eventjsondisp = dict()
+    #set the time field
+    eventjsondisp["Time"] = eventjson["Time"]
+    
+    #set the first file path value
+    try:
+        eventjsondisp["filepath0"] = eventjson["PATH-0-name"][1:-1] #remove the surroundingg quotes with [1:-1]
+    except:
+        eventjsondisp["filepath0"] = "UNKNOWN"
+    #set the second file path value
+    try:
+        eventjsondisp["filepath1"] = eventjson["PATH-1-name"][1:-1] #remove the surroundingg quotes with [1:-1]
+    except:
+        eventjsondisp["filepath1"] = "UNKNOWN"        
+    eventjsondisp["filepath"] = eventjsondisp["filepath1"] #set this now & we'll overwrite it later if we need to
+    #check if the full path is in the second path value
+    if not eventjsondisp["filepath1"].startswith("/"):
+        if eventjsondisp["filepath1"] != "UNKNOWN": #Ignore it if the path is unknown
+            if eventjsondisp["filepath0"] != "UNKNOWN": #Ignore it if the path is unknown
+                eventjsondisp["filepath"] = "{0}/{1}".format(eventjsondisp["filepath0"], eventjsondisp["filepath1"])
+    #set the username field
+    try:
+        eventjsondisp["uid"] = eventjson["UID"]
+    except:
+        eventjsondisp["uid"] = "UNKNOWN"
+    #set the process ID field
+    try:
+        eventjsondisp["pid"] = eventjson["pid"]
+    except:
+        eventjsondisp["pid"] = "UNKNOWN"
+    #set the parent process ID field
+    try:
+        eventjsondisp["ppid"] = eventjson["ppid"]
+    except:
+        eventjsondisp["ppid"] = "UNKNOWN"
+    #set the exe field - the file path
+    try:
+        eventjsondisp["exe"] = eventjson["exe"]
+    except:
+        eventjsondisp["exe"] = "UNKNOWN"
+    #set the key that was set by auditd - typically which rule logged it
+    try:
+        eventjsondisp["key"] = eventjson["key"]
+    except:
+        eventjsondisp["key"] = "UNKNOWN"
+        
+    #set the success state, this is more likely to fail than other events due to permissions
+    try:
+        eventjsondisp["success"] = eventjson["success"]
+    except:
+        eventjsondisp["success"] = "UNKNOWN"
+        
+    #were recording multiple syscalls in this table, record which one made this event
+    try:
+        eventjsondisp["syscall"] = eventjson["SYSCALL"]
+    except:
+        eventjsondisp["syscall"] = "UNKNOWN"
+    #append this row to the array
+    filecevents.append(eventjsondisp)
+    #return the array
+    return filecevents
 
 def _processchain(processevents):
     '''
@@ -285,9 +363,12 @@ def parsedata(eventdata):
     types = []
     types.append("EXECVE")
     types.append("SOCKADDR")
+    types.append("creat") #syscall
+    types.append("mknodat") #syscall
 
     processevents = [] #process event array
     networkevents = [] #network event array
+    filecreateevents = [] #file create event array
 
     syscallevents = set() #internal - to record unique syscalls to see which events might need parsing
 
@@ -297,15 +378,18 @@ def parsedata(eventdata):
         syscall = '' #what's the syscall
         eventdata = '' #the string to hold the event data for the syscall we care about
         eventtypesave = '' #record the event type we care about when we see it as we loop through each line & the event type changes
+        pathevents = [] # to save path results to, multiple per syscall are common
         for row in event.split("\n"): #loop through each line
             if "type=" in row: #if the event has a type set then parse it
                 eventtype = row.split("type=")[1].split(" ")[0] #split on = and then take the first string before the next space
                 if eventtype in types: #if this is an event type we want to parse, then parse it
                     interest = True #we want to parse it
-                    eventdata = row.replace("\x1d", " ") #this hex value was causing some funxy behaviour, so remove it
+                    eventdata = row.replace("\x1d", " ") #this hex value was causing some funny behaviour, so remove it
                     eventtypesave = eventtype #save the event type to lookup later in the parent loop
                 if eventtype == "SYSCALL":
                     syscall = row.replace("\x1d", " ") #record the syscall data
+                if eventtype == "PATH":
+                    pathevents.append(row.replace("\x1d", " "))                    
 
         eventjson = dict() #base dictionary for the key->value lookup
         syscall = shlex.split(syscall, posix=False) #split the syscall event into an array. Splits on space, preserving spaces in quotes
@@ -318,6 +402,16 @@ def parsedata(eventdata):
             syscallevents.add(eventjson["SYSCALL"]) #if the SYSCALL key is present, add it to the unique lookup of syscalls seens
         except:
             pass
+        
+        #try and set the syscall
+        try:
+            syscall = eventjson["SYSCALL"]
+        except:
+            syscall = "UNKNOWN"
+            
+        if syscall in types:
+            interest = True
+        
         if interest: #if we want to parse it
 
             eventdata = shlex.split(eventdata, posix=False) #split the event of interest (e.g. execve) into an array. Splits on space, preserving spaces in quotes
@@ -330,23 +424,44 @@ def parsedata(eventdata):
                 if key.startswith("EXECVE-a"): #if it's a process commandline arguement then parse it
                     if key != "EXECVE-argc": #we don't care about argcount for this
                         commandline += str(value[1:-1]) + " " #append the arg to the end of the commandline string
-            #try and set the syscall
-            try:
-                syscall = eventjson["SYSCALL"]
-            except:
-                syscall = "UNKNOWN"
+                        
+            if len(pathevents) > 0:
+                item = 0
+                for pathentry in pathevents:
+                    pathentrysplit = shlex.split(pathentry, posix=False) #split the event of interest (e.g. paths) into an array. Splits on space, preserving spaces in quotes
+                    for row in sorted(pathentrysplit):
+                        splitindex = row.find("=")
+                        key = "{0}".format(row[0:splitindex]) #set the key off the index.
+                        value = row[(splitindex + 1):] #set the value off the index
+                        if key == "item":
+                            item = value
+                            break #we don't need to process anymore
+                            
+                    for row in sorted(pathentrysplit):
+                        splitindex = row.find("=")
+                        key = "PATH-{0}-{1}".format(item, row[0:splitindex]) #set the key off the index. To prevent variable overwrite concat it with the eventtype at the start e.g. EXECVE
+                        value = row[(splitindex + 1):] #set the value off the index
+                        eventjson[key] = value #generate the key->value event
+                        
+                    #key = "PATH-{0}-{1}".format(eventtypesave, row[0:splitindex]) #set the key off the index. To prevent variable overwrite concat it with the eventtype at the start e.g. EXECVE
+                    #<todo>
             #if it's a process (execve) do the process processing
             if syscall == "execve":
                 processevents = _parseprocessevent(processevents, commandline, eventjson)
             #if it's a network event then parse the network event
             if syscall == "connect":
                 networkevents = _parsenetworkevents(networkevents, eventjson)
+            if (syscall == "creat") or (syscall == "mknodat"):
+                filecreateevents = _parsefilecreateevents(filecreateevents, eventjson)
 
     #generate the process chain and lookup variables                
     dfprocesseventsguid, procguidmaptime, processkeymappingcl, processkeymappingexe = _processchain(processevents)
     
     #assign the processguid and process commandline to the network events
     networkevents = _networkchain(networkevents, processkeymappingexe, processkeymappingcl, procguidmaptime)
+    
+    #assign the processguid and process commandline to the file create events
+    filecreateevents = _networkchain(filecreateevents, processkeymappingexe, processkeymappingcl, procguidmaptime)
     
     #convert the process events to a pandas dataframe
     dfprocessevents = pd.DataFrame.from_dict(dfprocesseventsguid)
@@ -356,10 +471,15 @@ def parsedata(eventdata):
     dfnetworkevents = pd.DataFrame.from_dict(networkevents)
     del networkevents
     
+    #convert the network events to a pandas dataframe
+    dffilecreateevents = pd.DataFrame.from_dict(filecreateevents)
+    del filecreateevents
+    
     #assign the result dictionary & add the results    
     resultdict = dict()
     resultdict["process"] = dfprocessevents
     resultdict["network"] = dfnetworkevents
+    resultdict["filecreate"] = dffilecreateevents
     
     #return the results
     return resultdict 

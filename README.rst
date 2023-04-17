@@ -13,7 +13,7 @@ Install the package using PIP "pip install auditd-python-parser" and then import
     f = open("audit.log", "r")
     rawdata = f.read()
     f.close()   
-    results = parsedata(rawdata)
+    results = auditdpythonparser.parsedata(rawdata)
 
     dfprocessevents = results["process"]
     dfnetworkevents = results["network"]

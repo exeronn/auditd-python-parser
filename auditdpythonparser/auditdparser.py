@@ -210,6 +210,94 @@ def _parsefilecreateevents(filecevents, eventjson):
     #return the array
     return filecevents
 
+def _parsefileopenatevents(fileopenatevents, eventjson):
+    '''
+    A private function to parse file openat events from raw auditd events
+    ---Inputs---
+    * fileopenatevents: an array containing the network events we've already parsed into json
+    * eventjson: the full event in JSON format to parse & process into the networkevents array
+
+    ---Returns---
+    * fileopenatevents: an array containing the process events we've already parsed - showing just the fields we want
+    '''
+    #attempt to get the timestamp via the syscall event
+    ts = eventjson["msg"].replace("audit(", "").replace(")", "").split(":")[0]
+    #convert the timestamp to a readable time
+    readabletime = datetime.datetime.utcfromtimestamp(float(ts)).strftime('%Y-%m-%d %H:%M:%S.%f')
+    eventjson["Time"] = readabletime
+    #we don't want to return all fields due to how many their are, we can't display them easily. So make a new dictionary with the fields we want.
+    eventjsondisp = dict()
+    #set the time field
+    eventjsondisp["Time"] = eventjson["Time"]
+    
+    #set the first file path value
+    try:
+        eventjsondisp["filepath0"] = eventjson["PATH-0-name"][1:-1] #remove the surrounding quotes with [1:-1]
+    except:
+        eventjsondisp["filepath0"] = "UNKNOWN"
+    #set the second file path value
+    try:
+        eventjsondisp["filepath1"] = eventjson["PATH-1-name"][1:-1] #remove the surrounding quotes with [1:-1]
+    except:
+        eventjsondisp["filepath1"] = "N/A"        
+    eventjsondisp["filepath"] = eventjsondisp["filepath1"] #set this now & we'll overwrite it later if we need to
+    #check if the full path is in the second path value
+    if not eventjsondisp["filepath1"].startswith("/"):
+        if eventjsondisp["filepath1"] != "N/A": #Ignore it if the path is unknown
+            if eventjsondisp["filepath0"] != "UNKNOWN": #Ignore it if the path is unknown
+                eventjsondisp["filepath"] = "{0}/{1}".format(eventjsondisp["filepath0"], eventjsondisp["filepath1"])
+    
+    try:
+        eventjsondisp["filetype0"] = eventjson["PATH-0-nametype"]
+    except:
+        eventjsondisp["filetype0"] = "UNKNOWN"
+    #set the second file path value
+    try:
+        eventjsondisp["filetype1"] = eventjson["PATH-1-nametype"]
+    except:
+        eventjsondisp["filetype1"] = "N/A"
+    #set the username field
+    try:
+        eventjsondisp["uid"] = eventjson["UID"]
+    except:
+        eventjsondisp["uid"] = "UNKNOWN"
+    #set the process ID field
+    try:
+        eventjsondisp["pid"] = eventjson["pid"]
+    except:
+        eventjsondisp["pid"] = "UNKNOWN"
+    #set the parent process ID field
+    try:
+        eventjsondisp["ppid"] = eventjson["ppid"]
+    except:
+        eventjsondisp["ppid"] = "UNKNOWN"
+    #set the exe field - the file path
+    try:
+        eventjsondisp["exe"] = eventjson["exe"]
+    except:
+        eventjsondisp["exe"] = "UNKNOWN"
+    #set the key that was set by auditd - typically which rule logged it
+    try:
+        eventjsondisp["key"] = eventjson["key"]
+    except:
+        eventjsondisp["key"] = "UNKNOWN"
+        
+    #set the success state, this is more likely to fail than other events due to permissions
+    try:
+        eventjsondisp["success"] = eventjson["success"]
+    except:
+        eventjsondisp["success"] = "UNKNOWN"
+        
+    #were recording multiple syscalls in this table, record which one made this event
+    try:
+        eventjsondisp["syscall"] = eventjson["SYSCALL"]
+    except:
+        eventjsondisp["syscall"] = "UNKNOWN"
+    #append this row to the array
+    fileopenatevents.append(eventjsondisp)
+    #return the array
+    return fileopenatevents
+
 def _processchain(processevents):
     '''
     A private function to parse the process events & add some ancestry via GUIDs to them
@@ -365,10 +453,12 @@ def parsedata(eventdata):
     types.append("SOCKADDR")
     types.append("creat") #syscall
     types.append("mknodat") #syscall
+    types.append("openat") #syscall
 
     processevents = [] #process event array
     networkevents = [] #network event array
     filecreateevents = [] #file create event array
+    fileopenatevents = [] #file openat event array
 
     syscallevents = set() #internal - to record unique syscalls to see which events might need parsing
 
@@ -453,6 +543,8 @@ def parsedata(eventdata):
                 networkevents = _parsenetworkevents(networkevents, eventjson)
             if (syscall == "creat") or (syscall == "mknodat"):
                 filecreateevents = _parsefilecreateevents(filecreateevents, eventjson)
+            if syscall == "openat":
+                fileopenatevents = _parsefileopenatevents(fileopenatevents, eventjson)
 
     #generate the process chain and lookup variables                
     dfprocesseventsguid, procguidmaptime, processkeymappingcl, processkeymappingexe = _processchain(processevents)
@@ -463,6 +555,9 @@ def parsedata(eventdata):
     #assign the processguid and process commandline to the file create events
     filecreateevents = _networkchain(filecreateevents, processkeymappingexe, processkeymappingcl, procguidmaptime)
     
+    #assign the processguid and process commandline to the file openat events
+    fileopenatevents = _networkchain(fileopenatevents, processkeymappingexe, processkeymappingcl, procguidmaptime)
+    
     #convert the process events to a pandas dataframe
     dfprocessevents = pd.DataFrame.from_dict(dfprocesseventsguid)
     del dfprocesseventsguid
@@ -471,15 +566,19 @@ def parsedata(eventdata):
     dfnetworkevents = pd.DataFrame.from_dict(networkevents)
     del networkevents
     
-    #convert the network events to a pandas dataframe
+    #convert the filecreate events to a pandas dataframe
     dffilecreateevents = pd.DataFrame.from_dict(filecreateevents)
     del filecreateevents
+    
+    dffileopenatevents = pd.DataFrame.from_dict(fileopenatevents)
+    del fileopenatevents
     
     #assign the result dictionary & add the results    
     resultdict = dict()
     resultdict["process"] = dfprocessevents
     resultdict["network"] = dfnetworkevents
     resultdict["filecreate"] = dffilecreateevents
+    resultdict["fileopenat"] = dffileopenatevents
     
     #return the results
     return resultdict 

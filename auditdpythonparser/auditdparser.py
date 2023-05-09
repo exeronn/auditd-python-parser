@@ -246,6 +246,8 @@ def _parsefileopenatevents(fileopenatevents, eventjson):
         if eventjsondisp["filepath1"] != "N/A": #Ignore it if the path is unknown
             if eventjsondisp["filepath0"] != "UNKNOWN": #Ignore it if the path is unknown
                 eventjsondisp["filepath"] = "{0}/{1}".format(eventjsondisp["filepath0"], eventjsondisp["filepath1"])
+        else:
+            eventjsondisp["filepath"] = "{0}".format(eventjsondisp["filepath0"])
     
     try:
         eventjsondisp["filetype0"] = eventjson["PATH-0-nametype"]
@@ -297,6 +299,88 @@ def _parsefileopenatevents(fileopenatevents, eventjson):
     fileopenatevents.append(eventjsondisp)
     #return the array
     return fileopenatevents
+
+def _parseuserauthevents(userauthevents, eventjson):
+    '''
+    A private function to parse file openat events from raw auditd events
+    ---Inputs---
+    * userauthevents: an array containing the auth events we've already parsed into json
+    * eventjson: the full event in JSON format to parse & process into the networkevents array
+
+    ---Returns---
+    * userauthevents: an array containing the auth events we've parsed - showing just the fields we want
+    '''
+    #attempt to get the timestamp via the syscall event
+    ts = eventjson["msg"].replace("audit(", "").replace(")", "").split(":")[0]
+    #convert the timestamp to a readable time
+    readabletime = datetime.datetime.utcfromtimestamp(float(ts)).strftime('%Y-%m-%d %H:%M:%S.%f')
+    eventjson["Time"] = readabletime
+    #we don't want to return all fields due to how many their are, we can't display them easily. So make a new dictionary with the fields we want.
+    eventjsondisp = dict()
+    #set the time field
+    eventjsondisp["Time"] = eventjson["Time"]
+    
+    #set the username the auth is running under
+    try:
+        eventjsondisp["source_user"] = eventjson["USER_AUTH-UID"][1:-1] #remove quotes
+    except:
+        eventjsondisp["source_user"] = "UNKNOWN"
+        
+    #set the target username
+    try:
+        eventjsondisp["target_user"] = eventjson["USER_AUTH-acct"][1:-1] #remove quotes
+    except:
+        eventjsondisp["target_user"] = "UNKNOWN"
+        
+    #set the source address
+    try:
+        eventjsondisp["src_addr"] = eventjson["USER_AUTH-addr"]
+    except:
+        eventjsondisp["src_addr"] = "UNKNOWN"
+        
+    #set the source hostname
+    try:
+        eventjsondisp["src_host"] = eventjson["USER_AUTH-hostname"]
+    except:
+        eventjsondisp["src_host"] = "UNKNOWN"
+        
+    #set the auth terminal
+    try:
+        eventjsondisp["auth_terminal"] = eventjson["USER_AUTH-terminal"]
+    except:
+        eventjsondisp["auth_terminal"] = "UNKNOWN"
+        
+    #set the auth success
+    try:
+        eventjsondisp["auth_success"] = eventjson["USER_AUTH-res"][:-1] #remove a trailing quote
+    except:
+        eventjsondisp["auth_success"] = "UNKNOWN"
+        
+    #set the process ID field
+    try:
+        eventjsondisp["pid"] = eventjson["pid"]
+    except:
+        eventjsondisp["pid"] = "UNKNOWN"
+    #set the parent process ID field
+    try:
+        eventjsondisp["ppid"] = eventjson["ppid"]
+    except:
+        eventjsondisp["ppid"] = "UNKNOWN"
+    #set the exe field - the file path
+    try:
+        eventjsondisp["exe"] = eventjson["exe"]
+    except:
+        eventjsondisp["exe"] = "UNKNOWN"
+    #set the key that was set by auditd - typically which rule logged it
+    try:
+        eventjsondisp["key"] = eventjson["key"]
+    except:
+        eventjsondisp["key"] = "UNKNOWN"
+        
+    #append this row to the array
+    userauthevents.append(eventjsondisp)
+    #return the array
+    return userauthevents
 
 def _processchain(processevents):
     '''
@@ -454,11 +538,13 @@ def parsedata(eventdata):
     types.append("creat") #syscall
     types.append("mknodat") #syscall
     types.append("openat") #syscall
+    types.append("USER_AUTH")
 
     processevents = [] #process event array
     networkevents = [] #network event array
     filecreateevents = [] #file create event array
     fileopenatevents = [] #file openat event array
+    userauthevents = []
 
     syscallevents = set() #internal - to record unique syscalls to see which events might need parsing
 
@@ -545,6 +631,9 @@ def parsedata(eventdata):
                 filecreateevents = _parsefilecreateevents(filecreateevents, eventjson)
             if syscall == "openat":
                 fileopenatevents = _parsefileopenatevents(fileopenatevents, eventjson)
+            #the syscall is openat which is not useful in this case, looking for the auth property gives us the event we want
+            if "USER_AUTH-type" in eventjson.keys():
+                userauthevents = _parseuserauthevents(userauthevents, eventjson)
 
     #generate the process chain and lookup variables                
     dfprocesseventsguid, procguidmaptime, processkeymappingcl, processkeymappingexe = _processchain(processevents)
@@ -557,6 +646,9 @@ def parsedata(eventdata):
     
     #assign the processguid and process commandline to the file openat events
     fileopenatevents = _networkchain(fileopenatevents, processkeymappingexe, processkeymappingcl, procguidmaptime)
+    
+    #assign the processguid and process commandline to the user auth events
+    userauthevents = _networkchain(userauthevents, processkeymappingexe, processkeymappingcl, procguidmaptime)
     
     #convert the process events to a pandas dataframe
     dfprocessevents = pd.DataFrame.from_dict(dfprocesseventsguid)
@@ -573,12 +665,16 @@ def parsedata(eventdata):
     dffileopenatevents = pd.DataFrame.from_dict(fileopenatevents)
     del fileopenatevents
     
+    dfuserauthevents = pd.DataFrame.from_dict(userauthevents)
+    del userauthevents
+    
     #assign the result dictionary & add the results    
     resultdict = dict()
     resultdict["process"] = dfprocessevents
     resultdict["network"] = dfnetworkevents
     resultdict["filecreate"] = dffilecreateevents
     resultdict["fileopenat"] = dffileopenatevents
+    resultdict["userauth"] = dfuserauthevents
     
     #return the results
     return resultdict 

@@ -19,6 +19,7 @@ Install the package using PIP "pip install auditd-python-parser" and then import
     dfnetworkevents = results["network"]
     dffilecreateevents = results["filecreate"]
 	dffileopenatevents = results["fileopenat"]
+	dfuserauthevents = results["userauth"]
     
 Process Event Example Output
 --------------
@@ -32,3 +33,6 @@ File Creat & Mknodat Event Example Output
 File Open Event Example Output
 --------------
 .. image:: https://github.com/exeronn/auditd-python-parser/raw/main/images/fileopenevents.PNG    
+User Auth Event Example Output
+--------------
+.. image:: https://github.com/exeronn/auditd-python-parser/raw/main/images/userauthevents.PNG   

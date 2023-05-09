@@ -18,8 +18,8 @@ Install the package using PIP "pip install auditd-python-parser" and then import
     dfprocessevents = results["process"]
     dfnetworkevents = results["network"]
     dffilecreateevents = results["filecreate"]
-	dffileopenatevents = results["fileopenat"]
-	dfuserauthevents = results["userauth"]
+    dffileopenatevents = results["fileopenat"]
+    dfuserauthevents = results["userauth"]
     
 Process Event Example Output
 --------------

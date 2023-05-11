@@ -501,17 +501,18 @@ def _networkchain(networkevents, processkeymappingexe, processkeymappingcl, proc
     * networkeventsguid: an array containing the network evens with the process GUID and process commandline columns set
     '''
     dfnetworkevents = pd.DataFrame.from_dict(networkevents) #convert it to a pandas dataframe
-    dfnetworkevents["Time"] = pd.to_datetime(dfnetworkevents["Time"], yearfirst=True, format="%Y-%m-%d %H:%M:%S.%f") #set the time column
     networkeventsguid = [] #set the base array for the modified events
-    for key, event in dfnetworkevents.sort_values(by='Time', ascending=True).iterrows(): #iterate over the network events, in time order
-        event["processguid"] = _getguidfrompid(str(event["pid"]), event["Time"].timestamp(), procguidmaptime, processkeymappingexe, str(event["exe"])) #get the process guid from the _getguidfrompid function
-        #attempt to set the process commandline by looking up the process GUID against processkeymappingcl (dict: GUID->commandline)
-        try:
-            event["processcommandline"] = processkeymappingcl[event["processguid"]]
-        except:
-            event["processcommandline"] = "UNKNOWN"
-            
-        networkeventsguid.append(event) #append the updated columns to the new array
+    if len(networkevents) > 0: #check there are records, if not return an empty array
+        dfnetworkevents["Time"] = pd.to_datetime(dfnetworkevents["Time"], yearfirst=True, format="%Y-%m-%d %H:%M:%S.%f") #set the time column
+        for key, event in dfnetworkevents.sort_values(by='Time', ascending=True).iterrows(): #iterate over the network events, in time order
+            event["processguid"] = _getguidfrompid(str(event["pid"]), event["Time"].timestamp(), procguidmaptime, processkeymappingexe, str(event["exe"])) #get the process guid from the _getguidfrompid function
+            #attempt to set the process commandline by looking up the process GUID against processkeymappingcl (dict: GUID->commandline)
+            try:
+                event["processcommandline"] = processkeymappingcl[event["processguid"]]
+            except:
+                event["processcommandline"] = "UNKNOWN"
+
+            networkeventsguid.append(event) #append the updated columns to the new array
     return networkeventsguid #return the new array
 
 def parsedata(eventdata):
